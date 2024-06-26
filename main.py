@@ -1,14 +1,19 @@
 import os
 from flask import Flask
 from threading import Thread
+
 import asyncio
 import logging
 import random
 import datetime
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command, Text
-from aiogram import F
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
+from aiogram import Router
 from aiogram.fsm.storage.memory import MemoryStorage
+
+
+
 
 app = Flask('')
 
@@ -29,10 +34,9 @@ ADMIN_ID = int(os.getenv('ADMIN_ID'))
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
-
+router = Router()
 # Инициализация логгера для aiogram
 logging.basicConfig(level=logging.INFO)
-
 # Словарь для хранения информации о последнем использовании команды прогноза на день
 user_last_daily_forecast = {}
 
@@ -63,43 +67,45 @@ gif_data = {
     # Добавьте свои gif-изображения и описания сюда
 }
 
-# Список для хранения идентификаторов пользователей
-user_ids = set()
-
 # Функция для отправки случайного gif и описания
 async def send_daily_forecast(user_id):
+    # Получаем список ключей (путей к gif-файлам)
     gif_files = list(gif_data.keys())
 
     if not gif_files:
         await bot.send_message(user_id, "Вибачте, немає доступних gif-зображень зараз.")
         return
 
+    # Выбираем случайный gif-файл
     gif_path = random.choice(gif_files)
     description = gif_data[gif_path]
 
+    # Отправляем gif и описание пользователю
     gif_file = types.FSInputFile(gif_path)
     await bot.send_document(user_id, gif_file, caption=description)
 
+    # Обновляем время последнего использования команды
     user_last_daily_forecast[user_id] = datetime.datetime.now()
 
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
-        [types.KeyboardButton(text="Прогноз на день 🙏")],
-        [types.KeyboardButton(text="⭐ Мої послуги")],
-        [types.KeyboardButton(text="Мій рахунок 💰")],
-        [types.KeyboardButton(text="❓❓❓ Задати питання")]
+    # Создаем клавиатуру с кнопками меню
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
+        [KeyboardButton(text="Прогноз на день 🙏")],
+        [KeyboardButton(text="⭐ Мої послуги")],
+        [KeyboardButton(text="Мій рахунок 💰")],
+        [KeyboardButton(text="❓❓❓ Задати питання")]
     ])
 
+    # Отправляем сообщение с меню
     await bot.send_message(user_id, "Виберіть пункт меню👇:", reply_markup=keyboard)
 
 # Обработчик команды /start
-@dp.message(Command("start"))
+@router.message(Command("start"))
 async def process_start_command(message: types.Message):
-    user_ids.add(message.from_user.id)
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
-        [types.KeyboardButton(text="Прогноз на день 🙏")],
-        [types.KeyboardButton(text="⭐ Мої послуги")],
-        [types.KeyboardButton(text="Мій рахунок 💰")],
-        [types.KeyboardButton(text="❓❓❓ Задати питання")]
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
+        [KeyboardButton(text="Прогноз на день 🙏")],
+        [KeyboardButton(text="⭐ Мої послуги")],
+        [KeyboardButton(text="Мій рахунок 💰")],
+        [KeyboardButton(text="❓❓❓ Задати питання")]
     ])
     await message.answer("Виберіть пункт меню👇:", reply_markup=keyboard)
 
@@ -107,19 +113,20 @@ async def process_start_command(message: types.Message):
 user_states = {}
 
 # Обработчик текстовых сообщений
-@dp.message(Text(in_={"Прогноз на день 🙏", "⭐ Мої послуги", "Мій рахунок 💰", "❓❓❓ Задати питання"}))
+@router.message(lambda message: message.text in ["Прогноз на день 🙏", "⭐ Мої послуги", "Мій рахунок 💰", "❓❓❓ Задати питання"])
 async def process_text_message(message: types.Message):
     user_id = message.from_user.id
     action = message.text
 
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
-        [types.KeyboardButton(text="Прогноз на день 🙏")],
-        [types.KeyboardButton(text="⭐ Мої послуги")],
-        [types.KeyboardButton(text="Мій рахунок 💰")],
-        [types.KeyboardButton(text="❓❓❓ Задати питання")]
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
+        [KeyboardButton(text="Прогноз на день 🙏")],
+        [KeyboardButton(text="⭐ Мої послуги")],
+        [KeyboardButton(text="Мій рахунок 💰")],
+        [KeyboardButton(text="❓❓❓ Задати питання")]
     ])
 
     if action == "Прогноз на день 🙏":
+        # Проверяем, прошло ли уже 24 часа с последнего использования
         last_used = user_last_daily_forecast.get(user_id)
         if last_used and (datetime.datetime.now() - last_used).total_seconds() < 86400:
             await message.answer("Ви вже одержали прогноз на сьогодні!\nНапишіть своє запитання або запишіться на прийом👇", reply_markup=keyboard)
@@ -134,41 +141,49 @@ async def process_text_message(message: types.Message):
         await message.answer("Будь ласка, введіть ваше запитання❓", reply_markup=keyboard)
 
 # Обработчик сообщений пользователей
-@dp.message(Text, lambda message: user_states.get(message.from_user.id) == "awaiting_question")
+@router.message(lambda message: user_states.get(message.from_user.id) == "awaiting_question")
 async def handle_question(message: types.Message):
     user_id = message.from_user.id
-    user_name = message.from_user.full_name
+    user_name = message.from_user.full_name  # Имя пользователя
     user_question = message.text
 
+    # Отправка вопроса администратору
     await bot.send_message(ADMIN_ID, f"Питання від користувача {user_name} (ID: {user_id}):\n{user_question}")
 
+    # Сброс состояния пользователя
     user_states[user_id] = None
 
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
-        [types.KeyboardButton(text="Прогноз на день 🙏")],
-        [types.KeyboardButton(text="⭐ Мої послуги")],
-        [types.KeyboardButton(text="Мій рахунок 💰")],
-        [types.KeyboardButton(text="❓❓❓ Задати питання")]
+    # Создаем клавиатуру с кнопками меню
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
+        [KeyboardButton(text="Прогноз на день 🙏")],
+        [KeyboardButton(text="⭐ Мої послуги")],
+        [KeyboardButton(text="Мій рахунок 💰")],
+        [KeyboardButton(text="❓❓❓ Задати питання")]
     ])
 
-    inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="Відповісти користувачеві", callback_data=f"answer:{user_id}")]
+    # Создаем inline-клавиатуру для ответа
+    inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Відповісти користувачеві", callback_data=f"answer:{user_id}")]
     ])
 
+    # Отправляем сообщение с подтверждением и inline-кнопкой "Ответить"
     await message.answer("Ваше запитання надіслано адміністратору. Чекайте на відповідь⏲️", reply_markup=keyboard)
     await bot.send_message(ADMIN_ID, "Натисніть нижче, щоб відповісти на запитання користувача👇", reply_markup=inline_keyboard)
 
 # Обработчик callback-запросов для ответа на вопрос пользователя
-@dp.callback_query(Text.startswith('answer:'))
+@router.callback_query(lambda c: c.data and c.data.startswith('answer:'))
 async def process_callback_answer(callback_query: types.CallbackQuery):
-    user_id = int(callback_query.data.split(':')[1])
+    user_id = callback_query.data.split(':')[1]
+    user_id = int(user_id)
 
+    # Ответ администратору с приглашением отправить сообщение
     await bot.send_message(callback_query.from_user.id, f"Введіть відповідь для користувача з ID: {user_id}")
 
+    # Сохранение состояния админа для дальнейшего ответа
     user_states[callback_query.from_user.id] = f"answering:{user_id}"
 
 # Обработчик текстовых сообщений от администратора для отправки ответа пользователю
-@dp.message(Text, lambda message: user_states.get(message.from_user.id, "").startswith("answering:"))
+@router.message(lambda message: user_states.get(message.from_user.id, "").startswith("answering:"))
 async def handle_admin_answer(message: types.Message):
     admin_id = message.from_user.id
     state = user_states.get(admin_id, "")
@@ -176,68 +191,16 @@ async def handle_admin_answer(message: types.Message):
         user_id = int(state.split(':')[1])
         answer_text = message.text
 
+        # Отправляем ответ пользователю
         await bot.send_message(user_id, f"Відповідь від 😀 адміністратора: {answer_text}")
 
+        # Подтверждаем администратору, что ответ был отправлен
         await message.answer("Відповідь надіслано користувачу🙏")
 
+        # Сбрасываем состояние администратора
         user_states[admin_id] = None
 
-# Новый обработчик команды для отправки сообщения всем пользователям
-@dp.message(Command("broadcast"))
-async def process_broadcast_command(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        user_states[message.from_user.id] = "awaiting_broadcast"
-        await message.answer("Введіть повідомлення для розсилки:")
 
-# Обработчик текстовых сообщений от администратора для рассылки сообщения
-@dp.message(Text, lambda message: user_states.get(message.from_user.id) == "awaiting_broadcast")
-async def handle_broadcast_message(message: types.Message):
-    admin_id = message.from_user.id
-    if admin_id == ADMIN_ID:
-        broadcast_message = message.text
-
-        for user_id in user_ids:
-            try:
-                await bot.send_message(user_id, broadcast_message)
-            except Exception as e:
-                logging.error(f"Failed to send message to {user_id}: {e}")
-
-        await message.answer("Повідомлення успішно надіслано всім користувачам.")
-        user_states[admin_id] = None
-
-# Новый обработчик для начала отправки сообщения с фото всем пользователям
-@dp.message(Command("broadcast_photo"))
-async def process_broadcast_photo_command(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        user_states[message.from_user.id] = "awaiting_broadcast_photo"
-        await message.answer("Введіть опис до фото для розсилки:")
-
-# Обработчик текстовых сообщений от администратора для описания фото
-@dp.message(Text, lambda message: user_states.get(message.from_user.id) == "awaiting_broadcast_photo")
-async def handle_broadcast_photo_caption(message: types.Message):
-    admin_id = message.from_user.id
-    if admin_id == ADMIN_ID:
-        photo_caption = message.text
-        user_states[admin_id] = ("awaiting_photo", photo_caption)
-        await message.answer("Тепер відправте фото для розсилки:")
-
-# Обработчик для получения фото и отправки его всем пользователям
-@dp.message(F.photo, lambda message: user_states.get(message.from_user.id, [None])[0] == "awaiting_photo")
-async def handle_broadcast_photo(message: types.Message):
-    admin_id = message.from_user.id
-    state = user_states.get(admin_id)
-    if state:
-        _, photo_caption = state
-        photo = message.photo[-1].file_id
-
-        for user_id in user_ids:
-            try:
-                await bot.send_photo(user_id, photo, caption=photo_caption)
-            except Exception as e:
-                logging.error(f"Failed to send photo to {user_id}: {e}")
-
-        await message.answer("Фото успішно надіслано всім користувачам.")
-        user_states[admin_id] = None
 
 # Регистрация роутеров и запуск бота
 async def main():
@@ -245,5 +208,6 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
+     # Запуск веб-сервера для UptimeRobot
     keep_alive()
     asyncio.run(main())
