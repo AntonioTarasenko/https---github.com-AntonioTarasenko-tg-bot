@@ -67,6 +67,10 @@ gif_data = {
     # Добавьте свои gif-изображения и описания сюда
 }
 
+# Список для хранения идентификаторов пользователей
+user_ids = set()
+
+
 # Функция для отправки случайного gif и описания
 async def send_daily_forecast(user_id):
     # Получаем список ключей (путей к gif-файлам)
@@ -199,6 +203,67 @@ async def handle_admin_answer(message: types.Message):
 
         # Сбрасываем состояние администратора
         user_states[admin_id] = None
+
+
+
+# Новый обработчик команды для отправки сообщения всем пользователям
+@router.message(Command("broadcast"))
+async def process_broadcast_command(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        user_states[message.from_user.id] = "awaiting_broadcast"
+        await message.answer("Введіть повідомлення для розсилки:")
+
+# Обработчик текстовых сообщений от администратора для рассылки сообщения
+@router.message(lambda message: user_states.get(message.from_user.id) == "awaiting_broadcast")
+async def handle_broadcast_message(message: types.Message):
+    admin_id = message.from_user.id
+    if admin_id == ADMIN_ID:
+        broadcast_message = message.text
+
+        for user_id in user_ids:
+            try:
+                await bot.send_message(user_id, broadcast_message)
+            except Exception as e:
+                logging.error(f"Failed to send message to {user_id}: {e}")
+
+        await message.answer("Повідомлення успішно надіслано всім користувачам.")
+        user_states[admin_id] = None
+
+# Новый обработчик для начала отправки сообщения с фото всем пользователям
+@router.message(Command("broadcast_photo"))
+async def process_broadcast_photo_command(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        user_states[message.from_user.id] = "awaiting_broadcast_photo"
+        await message.answer("Введіть опис до фото для розсилки:")
+
+# Обработчик текстовых сообщений от администратора для описания фото
+@router.message(lambda message: user_states.get(message.from_user.id) == "awaiting_broadcast_photo")
+async def handle_broadcast_photo_caption(message: types.Message):
+    admin_id = message.from_user.id
+    if admin_id == ADMIN_ID:
+        photo_caption = message.text
+        user_states[admin_id] = ("awaiting_photo", photo_caption)
+        await message.answer("Тепер відправте фото для розсилки:")
+
+# Обработчик для получения фото и отправки его всем пользователям
+@router.message(lambda message: user_states.get(message.from_user.id, [None])[0] == "awaiting_photo", content_types=types.ContentType.PHOTO)
+async def handle_broadcast_photo(message: types.Message):
+    admin_id = message.from_user.id
+    state = user_states.get(admin_id)
+    if state:
+        _, photo_caption = state
+        photo = message.photo[-1].file_id
+
+        for user_id in user_ids:
+            try:
+                await bot.send_photo(user_id, photo, caption=photo_caption)
+            except Exception as e:
+                logging.error(f"Failed to send photo to {user_id}: {e}")
+
+        await message.answer("Фото успішно надіслано всім користувачам.")
+        user_states[admin_id] = None
+
+
 
 
 
