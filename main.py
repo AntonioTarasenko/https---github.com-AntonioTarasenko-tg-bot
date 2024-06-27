@@ -12,9 +12,6 @@ from aiogram.filters import Command
 from aiogram import Router
 from aiogram.fsm.storage.memory import MemoryStorage
 
-
-
-
 app = Flask('')
 
 @app.route('/')
@@ -92,7 +89,8 @@ async def send_daily_forecast(user_id):
         [KeyboardButton(text="Прогноз на день 🙏")],
         [KeyboardButton(text="⭐ Мої послуги")],
         [KeyboardButton(text="Мій рахунок 💰")],
-        [KeyboardButton(text="❓❓❓ Задати питання")]
+        [KeyboardButton(text="❓❓❓ Задати питання")],
+        [KeyboardButton(text="Зв'язатися зі мною 📞")]
     ])
 
     # Отправляем сообщение с меню
@@ -105,7 +103,8 @@ async def process_start_command(message: types.Message):
         [KeyboardButton(text="Прогноз на день 🙏")],
         [KeyboardButton(text="⭐ Мої послуги")],
         [KeyboardButton(text="Мій рахунок 💰")],
-        [KeyboardButton(text="❓❓❓ Задати питання")]
+        [KeyboardButton(text="❓❓❓ Задати питання")],
+        [KeyboardButton(text="Зв'язатися зі мною 📞")]
     ])
     await message.answer("Виберіть пункт меню👇:", reply_markup=keyboard)
 
@@ -113,7 +112,7 @@ async def process_start_command(message: types.Message):
 user_states = {}
 
 # Обработчик текстовых сообщений
-@router.message(lambda message: message.text in ["Прогноз на день 🙏", "⭐ Мої послуги", "Мій рахунок 💰", "❓❓❓ Задати питання"])
+@router.message(lambda message: message.text in ["Прогноз на день 🙏", "⭐ Мої послуги", "Мій рахунок 💰", "❓❓❓ Задати питання", "Зв'язатися зі мною 📞"])
 async def process_text_message(message: types.Message):
     user_id = message.from_user.id
     action = message.text
@@ -122,7 +121,8 @@ async def process_text_message(message: types.Message):
         [KeyboardButton(text="Прогноз на день 🙏")],
         [KeyboardButton(text="⭐ Мої послуги")],
         [KeyboardButton(text="Мій рахунок 💰")],
-        [KeyboardButton(text="❓❓❓ Задати питання")]
+        [KeyboardButton(text="❓❓❓ Задати питання")],
+        [KeyboardButton(text="Зв'язатися зі мною 📞")]
     ])
 
     if action == "Прогноз на день 🙏":
@@ -139,6 +139,10 @@ async def process_text_message(message: types.Message):
     elif action == "❓❓❓ Задати питання":
         user_states[user_id] = "awaiting_question"
         await message.answer("Будь ласка, введіть ваше запитання❓", reply_markup=keyboard)
+    elif action == "Зв'язатися зі мною 📞":
+        viber_number = "+380991053527"  # Замените на ваш номер телефона
+        viber_link = f"viber://add?number={viber_number}"
+        await message.answer(f"Натисніть на посилання, щоб зв'язатися зі мною через Viber: [Зв'язатися через Viber]({viber_link})", parse_mode='Markdown')
 
 # Обработчик сообщений пользователей
 @router.message(lambda message: user_states.get(message.from_user.id) == "awaiting_question")
@@ -158,7 +162,8 @@ async def handle_question(message: types.Message):
         [KeyboardButton(text="Прогноз на день 🙏")],
         [KeyboardButton(text="⭐ Мої послуги")],
         [KeyboardButton(text="Мій рахунок 💰")],
-        [KeyboardButton(text="❓❓❓ Задати питання")]
+        [KeyboardButton(text="❓❓❓ Задати питання")],
+        [KeyboardButton(text="Зв'язатися зі мною 📞")]
     ])
 
     # Создаем inline-клавиатуру для ответа
@@ -200,14 +205,12 @@ async def handle_admin_answer(message: types.Message):
         # Сбрасываем состояние администратора
         user_states[admin_id] = None
 
-
-
 # Регистрация роутеров и запуск бота
 async def main():
     dp.include_router(router)
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
-     # Запуск веб-сервера для UptimeRobot
+    # Запуск веб-сервера для UptimeRobot
     keep_alive()
     asyncio.run(main())
