@@ -142,7 +142,7 @@ async def process_text_message(message: types.Message):
     elif action == "Зв'язатися зі мною 📞":
         viber_number = "+380991053527"  # Замените на ваш номер телефона
         viber_link = f"viber://add?number={viber_number}"
-        await message.answer(f"Натисніть на посилання, щоб зв'язатися зі мною через Viber: [Зв'язатися через Viber]({viber_link})", parse_mode='Markdown')
+        await message.answer(f"Натисніть на посилання, щоб зв'язатися зі мною через Viber: ({viber_link})")
 
 # Обработчик сообщений пользователей
 @router.message(lambda message: user_states.get(message.from_user.id) == "awaiting_question")
