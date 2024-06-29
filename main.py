@@ -6,8 +6,9 @@ import asyncio
 import logging
 import random
 import datetime
+import json
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.filters import Command
 from aiogram import Router
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -36,6 +37,19 @@ router = Router()
 logging.basicConfig(level=logging.INFO)
 # Словарь для хранения информации о последнем использовании команды прогноза на день
 user_last_daily_forecast = {}
+# Файл для хранения ID пользователей
+USERS_FILE = 'users.json'
+
+# Функции для работы с файлом пользователей
+def load_user_ids():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, 'r') as f:
+            return json.load(f)
+    return []
+
+def save_user_ids(user_ids):
+    with open(USERS_FILE, 'w') as f:
+        json.dump(user_ids, f)
 
 # Словарь с путями к gif-файлам и их описаниями
 gif_data = {
@@ -61,30 +75,24 @@ gif_data = {
     'data/cards/19.gif': "Слава, вигода та придбання, багатство, щастя, радість. У поганій гідності: марнославство, зарозумілість, чванлива показуха.",
     'data/cards/20.gif': "Остаточне рішення, судження, вирок, результат, визначення будь-якої справи чи питання без надії на апеляцію чи перегляд. У поганому гідності: відкладання справи.",
     'data/cards/21.gif': "Матерія, сутність, синтез, завершення, винагорода. Світ, царство. Зазвичай означає суть питання і тому цілком залежить від навколишніх карток.",
-    # Добавьте свои gif-изображения и описания сюда
+    # Ваши gif-файлы и описания
 }
 
 # Функция для отправки случайного gif и описания
 async def send_daily_forecast(user_id):
-    # Получаем список ключей (путей к gif-файлам)
     gif_files = list(gif_data.keys())
 
     if not gif_files:
         await bot.send_message(user_id, "Вибачте, немає доступних gif-зображень зараз.")
         return
 
-    # Выбираем случайный gif-файл
     gif_path = random.choice(gif_files)
     description = gif_data[gif_path]
-
-    # Отправляем gif и описание пользователю
-    gif_file = types.FSInputFile(gif_path)
+    gif_file = FSInputFile(gif_path)
     await bot.send_document(user_id, gif_file, caption=description)
 
-    # Обновляем время последнего использования команды
     user_last_daily_forecast[user_id] = datetime.datetime.now()
 
-    # Создаем клавиатуру с кнопками меню
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
         [KeyboardButton(text="Прогноз на день 🙏")],
         [KeyboardButton(text="⭐ Мої послуги")],
@@ -93,12 +101,17 @@ async def send_daily_forecast(user_id):
         [KeyboardButton(text="Зв'язатися зі мною 📞")]
     ])
 
-    # Отправляем сообщение с меню
     await bot.send_message(user_id, "Виберіть пункт меню👇:", reply_markup=keyboard)
 
 # Обработчик команды /start
 @router.message(Command("start"))
 async def process_start_command(message: types.Message):
+    user_id = message.from_user.id
+    user_ids = load_user_ids()
+    if user_id not in user_ids:
+        user_ids.append(user_id)
+        save_user_ids(user_ids)
+    
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
         [KeyboardButton(text="Прогноз на день 🙏")],
         [KeyboardButton(text="⭐ Мої послуги")],
@@ -126,7 +139,6 @@ async def process_text_message(message: types.Message):
     ])
 
     if action == "Прогноз на день 🙏":
-        # Проверяем, прошло ли уже 24 часа с последнего использования
         last_used = user_last_daily_forecast.get(user_id)
         if last_used and (datetime.datetime.now() - last_used).total_seconds() < 86400:
             await message.answer("Ви вже одержали прогноз на сьогодні!\nНапишіть своє запитання або запишіться на прийом👇", reply_markup=keyboard)
@@ -146,16 +158,13 @@ async def process_text_message(message: types.Message):
 @router.message(lambda message: user_states.get(message.from_user.id) == "awaiting_question")
 async def handle_question(message: types.Message):
     user_id = message.from_user.id
-    user_name = message.from_user.full_name  # Имя пользователя
+    user_name = message.from_user.full_name
     user_question = message.text
 
-    # Отправка вопроса администратору
     await bot.send_message(ADMIN_ID, f"Питання від користувача {user_name} (ID: {user_id}):\n{user_question}")
 
-    # Сброс состояния пользователя
     user_states[user_id] = None
 
-    # Создаем клавиатуру с кнопками меню
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, keyboard=[
         [KeyboardButton(text="Прогноз на день 🙏")],
         [KeyboardButton(text="⭐ Мої послуги")],
@@ -164,12 +173,10 @@ async def handle_question(message: types.Message):
         [KeyboardButton(text="Зв'язатися зі мною 📞")]
     ])
 
-    # Создаем inline-клавиатуру для ответа
     inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Відповісти користувачеві", callback_data=f"answer:{user_id}")]
     ])
 
-    # Отправляем сообщение с подтверждением и inline-кнопкой "Ответить"
     await message.answer("Ваше запитання надіслано адміністратору. Чекайте на відповідь⏲️", reply_markup=keyboard)
     await bot.send_message(ADMIN_ID, "Натисніть нижче, щоб відповісти на запитання користувача👇", reply_markup=inline_keyboard)
 
@@ -179,10 +186,8 @@ async def process_callback_answer(callback_query: types.CallbackQuery):
     user_id = callback_query.data.split(':')[1]
     user_id = int(user_id)
 
-    # Ответ администратору с приглашением отправить сообщение
     await bot.send_message(callback_query.from_user.id, f"Введіть відповідь для користувача з ID: {user_id}")
 
-    # Сохранение состояния админа для дальнейшего ответа
     user_states[callback_query.from_user.id] = f"answering:{user_id}"
 
 # Обработчик текстовых сообщений от администратора для отправки ответа пользователю
@@ -194,14 +199,42 @@ async def handle_admin_answer(message: types.Message):
         user_id = int(state.split(':')[1])
         answer_text = message.text
 
-        # Отправляем ответ пользователю
         await bot.send_message(user_id, f"Відповідь від 😀 адміністратора: {answer_text}")
-
-        # Подтверждаем администратору, что ответ был отправлен
         await message.answer("Відповідь надіслано користувачу🙏")
-
-        # Сбрасываем состояние администратора
         user_states[admin_id] = None
+
+# Функция для отправки сообщения всем пользователям
+async def broadcast_message(text=None, photo=None, video=None):
+    user_ids = load_user_ids()
+    for user_id in user_ids:
+        try:
+            if text:
+                await bot.send_message(chat_id=user_id, text=text)
+            elif photo:
+                await bot.send_photo(chat_id=user_id, photo=photo)
+            elif video:
+                await bot.send_video(chat_id=user_id, video=video)
+        except Exception as e:
+            logging.error(f"Failed to send message to {user_id}: {e}")
+
+# Команда для отправки сообщения всем пользователям
+@router.message(Command("broadcast"))
+async def handle_broadcast_command(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        user_states[message.from_user.id] = "awaiting_broadcast"
+        await message.answer("Будь ласка, введіть повідомлення для розсилки.")
+    else:
+        await message.answer("У вас немає прав для використання цієї команди.")
+
+# Обработчик сообщений администратора для рассылки
+@router.message(lambda message: user_states.get(message.from_user.id) == "awaiting_broadcast")
+async def handle_broadcast_message(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        user_states[message.from_user.id] = None
+        await broadcast_message(text=message.text)
+        await message.answer("Повідомлення розіслано всім користувачам.")
+    else:
+        await message.answer("У вас немає прав для використання цієї команди.")
 
 # Регистрация роутеров и запуск бота
 async def main():
@@ -209,6 +242,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
-    # Запуск веб-сервера для UptimeRobot
     keep_alive()
     asyncio.run(main())
